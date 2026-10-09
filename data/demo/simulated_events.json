@@ -1,0 +1,53 @@
+{
+  "notice": "这些事件是为演示注入的，不是色尔岗曲隧道现场实测。",
+  "events": [
+    {
+      "id": "demo-co",
+      "kind": "co_high",
+      "label": "一氧化碳浓度异常",
+      "station": "YK921+055",
+      "timestamp": "2026-09-30 14:05:00",
+      "value": 86,
+      "unit": "ppm",
+      "baseline": "该测点现场历史最高约 6.1，本次 86 为演示注入",
+      "detail": "模拟：浓度短时升至 86 ppm，明显高于现场历史范围。",
+      "simulated": true
+    },
+    {
+      "id": "demo-light",
+      "kind": "light_drop",
+      "label": "隧道照度骤降",
+      "station": "YK920+758",
+      "timestamp": "2026-09-30 14:06:00",
+      "value": 0,
+      "unit": "lx",
+      "baseline": "演示注入：前一时刻照度 1680 lx，随后变为 0",
+      "detail": "模拟：照明区突然失亮。现场表里的夜间低照度不作为本条依据。",
+      "simulated": true
+    },
+    {
+      "id": "demo-temperature",
+      "kind": "temperature_high",
+      "label": "隧道温度异常",
+      "station": "K922+065",
+      "timestamp": "2026-09-30 14:07:00",
+      "value": 42.6,
+      "unit": "℃",
+      "baseline": "现场环境表没有温度列，本条按右线中段桩号假设",
+      "detail": "模拟：洞内温度升至 42.6℃。现场资料无法核对这条读数。",
+      "simulated": true
+    },
+    {
+      "id": "demo-vehicle",
+      "kind": "vehicle_stop",
+      "label": "车辆停驶",
+      "station": "K922+065",
+      "timestamp": "2026-09-30 14:08:00",
+      "value": 8,
+      "unit": "秒",
+      "baseline": "对应演示视频《车辆停驶故障_演示》",
+      "detail": "模拟：车辆停在行车道内并打开危险报警闪光灯。",
+      "simulated": true
+    }
+  ]
+}

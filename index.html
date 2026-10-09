@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>高海拔隧道智能监测预警系统</title>
+    <link rel="stylesheet" href="styles.css?v=10" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">S</div>
+          <div>
+            <strong>高地隧道智能监测平台</strong>
+            <span>色尔岗曲隧道</span>
+          </div>
+        </div>
+
+        <nav class="nav">
+          <a class="nav-item active" href="#real-overview">现场总览</a>
+          <a class="nav-item" href="#environment-panel">环境监测</a>
+          <a class="nav-item" href="#video-panel">视频回看</a>
+          <a class="nav-item" href="#anomaly-panel">异常检测</a>
+          <a class="nav-item" href="#moma-analysis-panel">MoMA 分析</a>
+          <a class="nav-item" href="#fault-panel">故障记录</a>
+          <a class="nav-item" href="#source-panel">资料目录</a>
+          <a class="nav-item" href="#demo-overview">方案演示</a>
+        </nav>
+
+        <div class="sidebar-card">
+          <p class="label">资料范围</p>
+          <div class="pill reference">历史参考</div>
+          <ul>
+            <li>环境记录截至 2026 年 6 月</li>
+            <li>故障数据按隧道筛选</li>
+            <li>视频文件本地回放</li>
+          </ul>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">隧道运营监测</p>
+            <h1>多模态智能监测与分级预警系统</h1>
+          </div>
+          <div class="topbar-meta">
+            <span class="dot online"></span>
+            <span id="timestamp">更新时间：--</span>
+          </div>
+        </header>
+
+        <section id="real-overview" class="real-overview">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">FIELD RECORDS · 色尔岗曲隧道</p>
+              <h2>现场实测数据</h2>
+            </div>
+            <span id="real-data-status" class="source-state">正在读取真实资料…</span>
+          </div>
+
+          <div id="real-metrics" class="real-metrics"></div>
+
+          <div class="real-grid">
+            <section id="environment-panel" class="panel real-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>环境监测趋势</h2>
+                  <p id="environment-source" class="panel-caption">来自原始传感器工作簿</p>
+                </div>
+                <div class="data-controls">
+                  <label>
+                    <span>指标</span>
+                    <select id="metric-select">
+                      <option value="CO">CO 浓度</option>
+                      <option value="VI">能见度</option>
+                      <option value="WS">风速</option>
+                      <option value="LA">光照</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>测点</span>
+                    <select id="station-select"></select>
+                  </label>
+                </div>
+              </div>
+              <div id="real-environment-chart" class="chart-box real-chart"></div>
+              <div class="chart-footnote">
+                <span id="environment-count">-- 条原始记录</span>
+                <span id="environment-latest">采样时间 --</span>
+              </div>
+            </section>
+
+            <section id="video-panel" class="panel real-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>隧道视频回看</h2>
+                  <p class="panel-caption">默认播放模拟车辆停驶短片，YOLO 检测框随进度显示。带“模拟”的画面不是现场录像</p>
+                </div>
+                <span class="tiny-tag info">MP4</span>
+              </div>
+              <div class="video-stage">
+                <video id="video-player" controls playsinline preload="metadata">
+                  当前浏览器不支持视频播放。
+                </video>
+                <canvas id="video-overlay" class="video-overlay"></canvas>
+                <div id="video-empty" class="video-empty hidden">未找到 data/videos 中的 MP4 文件</div>
+              </div>
+              <div class="video-caption">
+                <strong id="video-name">正在查找视频…</strong>
+                <select id="video-select" class="video-select hidden" aria-label="选择视频"></select>
+                <span id="video-details">支持暂停、拖动进度和全屏播放</span>
+              </div>
+            </section>
+          </div>
+
+          <section id="anomaly-panel" class="panel real-panel moma-analysis-panel">
+            <div class="panel-header">
+              <div>
+                <h2>本地异常筛查</h2>
+                <p class="panel-caption">现场结论与模拟事件分开。检出异常后自动做一次短复核，没有异常则不调用</p>
+              </div>
+              <span class="tiny-tag info">本地优先</span>
+            </div>
+            <p id="field-check" class="field-check">尚未核对现场历史表。现场读数不作为本次异常。</p>
+            <div class="moma-actions">
+              <button id="anomaly-scan" class="moma-run-button" type="button">核对现场并加载演示</button>
+              <button id="video-scan" class="moma-reset-button" type="button">判断当前视频停驶</button>
+              <button id="anomaly-verify" class="moma-run-button" type="button" disabled>重新提交 MoMA</button>
+              <button id="offline-review" class="moma-reset-button" type="button" disabled>显示离线结论</button>
+            </div>
+            <p id="anomaly-status" class="moma-status" role="status">现场结论和模拟事件会分开显示。有异常时自动提交 MoMA。</p>
+            <p id="finding-caption" class="finding-caption"></p>
+            <ul id="anomaly-findings" class="finding-list"></ul>
+            <div id="route-board" class="route-board"></div>
+            <pre id="anomaly-output" class="moma-output" aria-live="polite">本地结论留在上方。路由结果或离线结论在此显示。</pre>
+          </section>
+
+          <section id="moma-analysis-panel" class="panel real-panel moma-analysis-panel">
+            <div class="panel-header">
+              <div>
+                <h2>MoMA 人工追问</h2>
+                <p class="panel-caption">对所选测点历史记录继续追问。异常是否上报，以上方本地筛查结果为准</p>
+              </div>
+              <span class="tiny-tag info">Chat Completions</span>
+            </div>
+            <div class="moma-analysis-controls">
+              <div class="data-controls moma-route-controls">
+                <label>
+                  <span>分析任务</span>
+                  <select id="moma-task">
+                    <option value="patrol">常规巡检</option>
+                    <option value="review">异常复核</option>
+                    <option value="fusion" selected>多源关联</option>
+                  </select>
+                </label>
+                <label>
+                  <span>路由策略</span>
+                  <select id="moma-strategy">
+                    <option value="cost">成本优先</option>
+                    <option value="balanced" selected>均衡优先</option>
+                    <option value="quality">效果优先</option>
+                  </select>
+                </label>
+              </div>
+              <label for="moma-question">分析问题（首次可选，追问必填）</label>
+              <textarea id="moma-question" rows="2" maxlength="500" placeholder="例如：这组 CO 历史记录呈现什么变化？哪些事项需要人工复核？"></textarea>
+              <div class="moma-actions">
+                <button id="moma-run" class="moma-run-button" type="button">提交至 MoMA</button>
+                <button id="moma-reset" class="moma-reset-button" type="button">新会话</button>
+              </div>
+            </div>
+            <p id="moma-status" class="moma-status" role="status">选择测点后可调用 MoMA 智能路由进行分析。</p>
+            <pre id="moma-output" class="moma-output" aria-live="polite">分析结果将在此显示。</pre>
+            <div id="moma-usage" class="chart-footnote"></div>
+          </section>
+
+          <div class="real-grid real-grid-bottom">
+            <section id="fault-panel" class="panel real-panel table-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>设备故障记录</h2>
+                  <p class="panel-caption">从真实故障分析表按隧道名称筛选</p>
+                </div>
+                <span id="fault-total" class="tiny-tag">-- 条记录</span>
+              </div>
+              <div class="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>故障时间</th>
+                      <th>设备 / 类型</th>
+                      <th>桩号</th>
+                      <th>故障说明</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="real-fault-table"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="source-panel" class="panel real-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>真实资料目录</h2>
+                  <p class="panel-caption">查看或下载本项目参考文件</p>
+                </div>
+                <span id="source-count" class="tiny-tag">-- 个文件</span>
+              </div>
+              <ul id="source-files" class="source-files"></ul>
+            </section>
+          </div>
+        </section>
+
+        <div id="demo-overview" class="demo-heading">
+          <div>
+            <p class="eyebrow">样例数据 · 非现场记录 · 非本次模拟异常</p>
+            <h2>方案演示区</h2>
+          </div>
+          <span class="source-state demo-state">风险分级、趋势和事件列表是方案样例，与上方现场曲线、模拟异常不是同一套数据</span>
+        </div>
+
+        <section id="metrics" class="metrics-grid"></section>
+
+        <section class="charts-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>环境趋势</h2>
+              <span class="tiny-tag">温度 / 湿度</span>
+            </div>
+            <div id="temperature-chart" class="chart-box"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>CO 与通风</h2>
+              <span class="tiny-tag info">24h</span>
+            </div>
+            <div id="co-chart" class="chart-box"></div>
+          </div>
+        </section>
+
+        <section class="content-grid">
+          <div class="panel panel-wide">
+            <div class="panel-header">
+              <h2>隧道运行概况</h2>
+              <span class="tiny-tag">24h</span>
+            </div>
+            <div class="panel-body summary-grid">
+              <div class="stat-block">
+                <div>
+                  <span class="label">当前风险</span>
+                  <strong id="current-risk">--</strong>
+                </div>
+                <div class="sparkline">
+                  <span style="height: 30%"></span>
+                  <span style="height: 40%"></span>
+                  <span style="height: 58%"></span>
+                  <span style="height: 48%"></span>
+                  <span style="height: 65%"></span>
+                  <span style="height: 85%"></span>
+                  <span style="height: 72%"></span>
+                </div>
+              </div>
+
+              <div class="stat-block compact">
+                <div class="mini-row">
+                  <span>CO浓度</span>
+                  <strong id="co-value">--</strong>
+                </div>
+                <div class="mini-row">
+                  <span>通风设备</span>
+                  <strong id="fan-status">--</strong>
+                </div>
+                <div class="mini-row">
+                  <span>观测完整率</span>
+                  <strong id="coverage">--</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>分级统计</h2>
+              <span class="tiny-tag warning">L0-L3</span>
+            </div>
+            <div id="risk-bars" class="risk-bars"></div>
+          </div>
+        </section>
+
+        <section class="bottom-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>MoMA智能路由</h2>
+              <span class="tiny-tag">多模型调度</span>
+            </div>
+            <div id="routing" class="route-list"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>核心工作流</h2>
+              <span class="tiny-tag info">三条链路</span>
+            </div>
+            <div id="workflow" class="workflow-chain"></div>
+          </div>
+        </section>
+
+        <section class="panel table-panel">
+          <div class="panel-header">
+            <h2>实时事件列表</h2>
+            <span class="tiny-tag success">近1小时</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>事件ID</th>
+                <th>点位</th>
+                <th>类型</th>
+                <th>风险</th>
+                <th>状态</th>
+                <th>证据</th>
+              </tr>
+            </thead>
+            <tbody id="event-table"></tbody>
+          </table>
+        </section>
+
+        <section class="panel table-panel">
+          <div class="panel-header">
+            <h2>模型选型矩阵</h2>
+            <span class="tiny-tag">MoMA Agent</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>任务类型</th>
+                <th>调用模型</th>
+                <th>路由策略</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody id="model-table"></tbody>
+          </table>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js?v=14"></script>
+  </body>
+</html>
