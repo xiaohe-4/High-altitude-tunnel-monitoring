@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>高海拔隧道智能监测预警系统</title>
-    <link rel="stylesheet" href="styles.css?v=10" />
+    <link rel="stylesheet" href="styles.css?v=13" />
   </head>
   <body>
     <div class="app-shell">
@@ -17,15 +17,15 @@
           </div>
         </div>
 
-        <nav class="nav">
-          <a class="nav-item active" href="#real-overview">现场总览</a>
-          <a class="nav-item" href="#environment-panel">环境监测</a>
-          <a class="nav-item" href="#video-panel">视频回看</a>
-          <a class="nav-item" href="#anomaly-panel">异常检测</a>
-          <a class="nav-item" href="#moma-analysis-panel">MoMA 分析</a>
-          <a class="nav-item" href="#fault-panel">故障记录</a>
-          <a class="nav-item" href="#source-panel">资料目录</a>
-          <a class="nav-item" href="#demo-overview">方案演示</a>
+        <nav class="nav" aria-label="页面">
+          <a class="nav-item active" href="#overview" data-view="overview">现场总览</a>
+          <a class="nav-item" href="#environment" data-view="environment">环境监测</a>
+          <a class="nav-item" href="#video" data-view="video">视频回看</a>
+          <a class="nav-item" href="#anomaly" data-view="anomaly">异常检测</a>
+          <a class="nav-item" href="#moma" data-view="moma">MoMA 分析</a>
+          <a class="nav-item" href="#faults" data-view="faults">故障记录</a>
+          <a class="nav-item" href="#sources" data-view="sources">资料目录</a>
+          <a class="nav-item" href="#demo" data-view="demo">方案演示</a>
         </nav>
 
         <div class="sidebar-card">
@@ -46,12 +46,12 @@
             <h1>多模态智能监测与分级预警系统</h1>
           </div>
           <div class="topbar-meta">
-            <span class="dot online"></span>
-            <span id="timestamp">更新时间：--</span>
+            <span class="dot history"></span>
+            <span id="timestamp">资料时间：--</span>
           </div>
         </header>
 
-        <section id="real-overview" class="real-overview">
+        <section id="real-overview" class="app-view real-overview" data-view="overview">
           <div class="section-heading">
             <div>
               <p class="eyebrow">FIELD RECORDS · 色尔岗曲隧道</p>
@@ -62,7 +62,42 @@
 
           <div id="real-metrics" class="real-metrics"></div>
 
-          <div class="real-grid">
+          <div class="overview-board">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>四类环境曲线</h2>
+                  <p class="panel-caption">各取优先测点最近一段记录，点卡片可进入环境监测</p>
+                </div>
+              </div>
+              <div id="overview-charts" class="overview-charts"></div>
+            </section>
+            <section class="panel table-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>未恢复故障</h2>
+                  <p class="panel-caption">色尔岗曲隧道故障表，优先列出尚未恢复的记录</p>
+                </div>
+                <span id="overview-fault-count" class="tiny-tag">--</span>
+              </div>
+              <div class="table-scroll overview-fault-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>设备</th>
+                      <th>桩号</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody id="overview-fault-table"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="app-view" data-view="environment" hidden>
             <section id="environment-panel" class="panel real-panel">
               <div class="panel-header">
                 <div>
@@ -86,12 +121,46 @@
                 </div>
               </div>
               <div id="real-environment-chart" class="chart-box real-chart"></div>
+              <div id="environment-stats" class="env-stats"></div>
               <div class="chart-footnote">
                 <span id="environment-count">-- 条原始记录</span>
                 <span id="environment-latest">采样时间 --</span>
               </div>
             </section>
+            <div class="env-board">
+              <section class="panel table-panel">
+                <div class="panel-header">
+                  <div>
+                    <h2>近期记录</h2>
+                    <p class="panel-caption">当前指标和测点的最近 12 条原表读数</p>
+                  </div>
+                </div>
+                <div class="table-scroll env-record-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>记录时间</th>
+                        <th>设备</th>
+                        <th>读数</th>
+                      </tr>
+                    </thead>
+                    <tbody id="environment-records"></tbody>
+                  </table>
+                </div>
+              </section>
+              <section class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2>各测点最近值</h2>
+                    <p class="panel-caption">同一指标下，各桩号最后一条记录</p>
+                  </div>
+                </div>
+                <div id="environment-stations" class="station-bars"></div>
+              </section>
+            </div>
+        </section>
 
+        <section class="app-view" data-view="video" hidden>
             <section id="video-panel" class="panel real-panel">
               <div class="panel-header">
                 <div>
@@ -113,13 +182,14 @@
                 <span id="video-details">支持暂停、拖动进度和全屏播放</span>
               </div>
             </section>
-          </div>
+        </section>
 
+        <section class="app-view" data-view="anomaly" hidden>
           <section id="anomaly-panel" class="panel real-panel moma-analysis-panel">
             <div class="panel-header">
               <div>
                 <h2>本地异常筛查</h2>
-                <p class="panel-caption">现场结论与模拟事件分开。检出异常后自动做一次短复核，没有异常则不调用</p>
+                <p class="panel-caption">现场四类序列按测点核对。模拟事件单独列出，检出后才会提交 MoMA</p>
               </div>
               <span class="tiny-tag info">本地优先</span>
             </div>
@@ -136,12 +206,14 @@
             <div id="route-board" class="route-board"></div>
             <pre id="anomaly-output" class="moma-output" aria-live="polite">本地结论留在上方。路由结果或离线结论在此显示。</pre>
           </section>
+        </section>
 
+        <section class="app-view" data-view="moma" hidden>
           <section id="moma-analysis-panel" class="panel real-panel moma-analysis-panel">
             <div class="panel-header">
               <div>
                 <h2>MoMA 人工追问</h2>
-                <p class="panel-caption">对所选测点历史记录继续追问。异常是否上报，以上方本地筛查结果为准</p>
+                <p class="panel-caption">对所选测点历史记录继续追问。异常是否上报，以「异常检测」页的本地筛查结果为准</p>
               </div>
               <span class="tiny-tag info">Chat Completions</span>
             </div>
@@ -175,8 +247,9 @@
             <pre id="moma-output" class="moma-output" aria-live="polite">分析结果将在此显示。</pre>
             <div id="moma-usage" class="chart-footnote"></div>
           </section>
+        </section>
 
-          <div class="real-grid real-grid-bottom">
+        <section class="app-view" data-view="faults" hidden>
             <section id="fault-panel" class="panel real-panel table-panel">
               <div class="panel-header">
                 <div>
@@ -200,7 +273,9 @@
                 </table>
               </div>
             </section>
+        </section>
 
+        <section class="app-view" data-view="sources" hidden>
             <section id="source-panel" class="panel real-panel">
               <div class="panel-header">
                 <div>
@@ -211,16 +286,17 @@
               </div>
               <ul id="source-files" class="source-files"></ul>
             </section>
-          </div>
         </section>
 
-        <div id="demo-overview" class="demo-heading">
-          <div>
-            <p class="eyebrow">样例数据 · 非现场记录 · 非本次模拟异常</p>
-            <h2>方案演示区</h2>
+        <section id="demo-overview" class="app-view" data-view="demo" hidden>
+          <div class="demo-heading">
+            <div>
+              <p class="eyebrow">样例数据 · 非现场记录 · 非本次模拟异常</p>
+              <h2>方案演示区</h2>
+            </div>
+            <span class="source-state demo-state">风险分级、趋势和事件列表是方案样例，与现场记录不是同一套数据</span>
           </div>
-          <span class="source-state demo-state">风险分级、趋势和事件列表是方案样例，与上方现场曲线、模拟异常不是同一套数据</span>
-        </div>
+          <div class="demo-body">
 
         <section id="metrics" class="metrics-grid"></section>
 
@@ -343,12 +419,14 @@
                 <th>说明</th>
               </tr>
             </thead>
-            <tbody id="model-table"></tbody>
-          </table>
+            <tbody id="model-table">          </tbody>
+        </table>
+        </section>
+          </div>
         </section>
       </main>
     </div>
 
-    <script src="app.js?v=14"></script>
+    <script src="app.js?v=17"></script>
   </body>
 </html>

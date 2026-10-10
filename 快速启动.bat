@@ -2,12 +2,19 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-set "PY=%~dp0.venv\Scripts\python.exe"
-if not exist "%PY%" (
-  echo 未找到 .venv，请先在项目目录执行：
-  echo   python -m venv .venv
-  echo   .venv\Scripts\python.exe -m pip install -r requirements.txt
-  exit /b 1
+set "MODE=venv"
+if not exist "%~dp0.venv\Scripts\python.exe" set "MODE=py"
+if "%MODE%"=="py" (
+  py -3 -c "import fastapi,uvicorn" >nul 2>&1
+  if errorlevel 1 (
+    echo 未找到 .venv，本机 Python 也缺少 fastapi。
+    echo 请在项目目录执行：
+    echo   py -3 -m venv .venv
+    echo   .venv\Scripts\python.exe -m pip install -r requirements.txt
+    pause
+    exit /b 1
+  )
+  echo 未找到 .venv，改用本机 Python 启动。
 )
 
 if not exist "%~dp0.env" (
@@ -26,4 +33,9 @@ if not errorlevel 1 (
 
 echo 正在启动监测页面： http://localhost:8000
 start "" cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:8000"
-"%PY%" server.py
+if "%MODE%"=="py" (
+  py -3 server.py
+) else (
+  "%~dp0.venv\Scripts\python.exe" server.py
+)
+if errorlevel 1 pause

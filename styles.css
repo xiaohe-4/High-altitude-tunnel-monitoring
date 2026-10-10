@@ -190,6 +190,11 @@ body {
   box-shadow: 0 0 0 6px rgba(126, 230, 162, 0.12);
 }
 
+.dot.history {
+  background: var(--blue);
+  box-shadow: 0 0 0 6px rgba(91, 178, 255, 0.12);
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -528,10 +533,29 @@ tbody td {
   text-decoration: none;
 }
 
-.real-overview {
+.real-overview,
+.app-view {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+}
+
+.app-view[hidden] {
+  display: none !important;
+}
+
+.app-view[data-view="environment"] .real-chart {
+  height: 360px;
+}
+
+.app-view[data-view="environment"] .data-controls select {
+  max-width: 220px;
+}
+
+.app-view[data-view="faults"] .table-scroll,
+.app-view[data-view="sources"] .source-files {
+  max-height: calc(100vh - 260px);
 }
 
 .section-heading,
@@ -613,6 +637,103 @@ tbody td {
 .real-metric.ws { border-top-color: var(--green); }
 .real-metric.la { border-top-color: var(--orange); }
 .real-metric.fault { border-top-color: var(--red); }
+
+.overview-board,
+.env-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.overview-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.overview-chart-card {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(5, 15, 22, 0.42);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.overview-chart-card:hover {
+  border-color: rgba(92, 227, 213, 0.4);
+}
+
+.overview-chart-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.overview-chart-meta span,
+.station-bar small {
+  color: var(--muted);
+}
+
+.overview-chart {
+  height: 92px;
+  background: transparent;
+}
+
+.overview-fault-scroll,
+.env-record-scroll {
+  max-height: 320px;
+}
+
+.env-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.env-stats div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(5, 15, 22, 0.42);
+}
+
+.env-stats span,
+.station-bar-meta span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.env-stats strong {
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.station-bars {
+  display: grid;
+  gap: 12px;
+}
+
+.station-bar {
+  display: grid;
+  gap: 6px;
+}
+
+.station-bar-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
 
 .real-grid {
   display: grid;
@@ -1017,9 +1138,32 @@ tbody td {
   text-decoration: underline;
 }
 
+.demo-fold {
+  border: 1px solid rgba(255, 178, 94, 0.28);
+  border-radius: 18px;
+  background: rgba(255, 178, 94, 0.04);
+  padding: 8px 16px 16px;
+}
+
+.demo-fold > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.demo-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.demo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 12px;
+}
+
 .demo-heading {
   align-items: center;
-  padding: 4px 0 0;
+  padding: 8px 0;
 }
 
 .demo-state {
@@ -1044,8 +1188,14 @@ tbody td {
   }
 
   .real-grid,
-  .real-grid-bottom {
+  .real-grid-bottom,
+  .overview-board,
+  .env-board {
     grid-template-columns: 1fr;
+  }
+
+  .env-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .metrics-grid {
@@ -1080,7 +1230,9 @@ tbody td {
     flex-direction: column;
   }
 
-  .real-metrics {
+  .real-metrics,
+  .overview-charts,
+  .env-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from api_server import verify_sensor_anomalies, verify_video_anomalies
-from local_detector import detect_sensor_anomalies
+from local_detector import CO_ATTENTION_PPM, detect_sensor_anomalies, field_exceedances
 from vision_detector import DEMO_VIDEO_NAME, VIDEO_DIR, load_video_detections, scan_local_video, stationary_vehicle
 
 
@@ -20,7 +20,11 @@ class LocalDetectorTests(unittest.TestCase):
         report = detect_sensor_anomalies()
 
         self.assertGreater(report["scanned"]["co_records"], 0)
+        self.assertGreater(report["scanned"]["vi_records"], 0)
         self.assertGreater(report["scanned"]["light_records"], 0)
+        self.assertGreater(report["scanned"]["ws_records"], 0)
+        self.assertEqual(report["field_findings"], [])
+        self.assertEqual(report["field_check"]["attention_ppm"], CO_ATTENTION_PPM)
         self.assertTrue(report["historical"])
         self.assertTrue(report["demo"])
         self.assertIn("不作为异常", report["field_check"]["conclusion"])
@@ -37,6 +41,18 @@ class LocalDetectorTests(unittest.TestCase):
         self.assertGreater(co["value"], 14)
         temperature = next(item for item in report["findings"] if item["kind"] == "temperature_high")
         self.assertIn("温度", temperature["label"])
+
+    def test_field_scan_flags_only_carbon_monoxide_above_attention(self):
+        records = [
+            {"station": "YK921+055", "timestamp": "2026-06-11 10:00:00", "value": 6.1},
+            {"station": "YK921+055", "timestamp": "2026-06-11 10:15:00", "value": 86},
+        ]
+        found = field_exceedances(records, "CO")
+        self.assertEqual(len(found), 1)
+        self.assertFalse(found[0]["simulated"])
+        self.assertEqual(found[0]["value"], 86)
+        self.assertEqual(field_exceedances(records, "LA"), [])
+        self.assertEqual(field_exceedances([records[0]], "CO"), [])
 
     def test_carbon_monoxide_zero_is_not_a_demo_event(self):
         report = detect_sensor_anomalies()

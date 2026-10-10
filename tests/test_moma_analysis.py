@@ -180,7 +180,7 @@ class MomaAnalysisApiTests(unittest.TestCase):
             calls.append((strategy_id, max_tokens, messages[1]["content"], timeout))
             return {"model": f"router-{strategy_id}", "reply": f"{strategy_id} 模拟结论", "usage": {"total_tokens": 12}, "elapsed_ms": 8}
 
-        request = AnomalyVerifyRequest(findings=findings)
+        request = AnomalyVerifyRequest(scope="sensor")
 
         async def run_twice():
             first = await route_sensor_anomalies(request)
@@ -189,7 +189,11 @@ class MomaAnalysisApiTests(unittest.TestCase):
             second = await route_sensor_anomalies(request)
             return first, second
 
-        with patch("api_server._persist_route_cache"), patch("api_server._ask_moma", side_effect=fake_ask):
+        with (
+            patch("api_server._persist_route_cache"),
+            patch("api_server._ask_moma", side_effect=fake_ask),
+            patch("api_server.detect_sensor_anomalies", return_value={"findings": findings}),
+        ):
             result, cached = asyncio.run(run_twice())
 
         self.assertTrue(result["submitted"])
@@ -206,6 +210,24 @@ class MomaAnalysisApiTests(unittest.TestCase):
         self.assertIn("是否合并上报：否", cached["reply"])
         self.assertTrue(cached["cached"])
         self.assertEqual([item["model"] for item in cached["routes"]], ["router-balanced", "router-cost", "router-cost", "router-quality"])
+
+    def test_route_recomputes_findings_on_the_server(self):
+        _ROUTE_CACHE.clear()
+        _ROUTE_ERRORS.clear()
+        _ROUTE_JOBS.clear()
+
+        async def run():
+            with patch("api_server.detect_sensor_anomalies", return_value={"findings": []}):
+                with patch("api_server._ask_moma") as ask:
+                    result = await route_sensor_anomalies(
+                        AnomalyVerifyRequest(scope="sensor", refresh=True)
+                    )
+            return result, ask
+
+        result, ask = asyncio.run(run())
+        ask.assert_not_called()
+        self.assertFalse(result["submitted"])
+        self.assertEqual(result["reply"], "没有需要路由的异常。")
 
 
 if __name__ == "__main__":

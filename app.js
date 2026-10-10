@@ -48,9 +48,6 @@ async function loadDashboard() {
   const avgTemp = (temperatures.reduce((sum, value) => sum + value, 0) / temperatures.length).toFixed(1);
   const peakCo = Math.max(...coSeries).toFixed(1);
 
-  const timestamp = document.getElementById('timestamp');
-  timestamp.textContent = `更新时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`;
-
   const metrics = [
     { label: '当前风险等级', value: data.risk_summary.current_risk_level, trend: '+0.4 等级', type: 'warning' },
     { label: '设备在线率', value: '98.7%', trend: '+1.8%', type: 'success' },
@@ -106,8 +103,8 @@ async function loadDashboard() {
           <div class="route-meta">
             <div class="workflow-index">${item.id}</div>
             <div>
-              <span class="route-name">${item.name}</span>
-              <span class="route-desc">${item.description}</span>
+              <span class="route-name">${escapeHtml(item.name)}</span>
+              <span class="route-desc">${escapeHtml(item.description)}</span>
             </div>
           </div>
           <span class="route-pill ${item.priorityClass}">${item.priority}</span>
@@ -124,8 +121,8 @@ async function loadDashboard() {
         <div class="workflow-item">
           <div class="workflow-index">${item.step}</div>
           <div>
-            <strong>${item.title}</strong>
-            <span>${item.detail}</span>
+            <strong>${escapeHtml(item.title)}</strong>
+            <span>${escapeHtml(item.detail)}</span>
           </div>
         </div>
       `
@@ -137,12 +134,12 @@ async function loadDashboard() {
     .map(
       (event) => `
         <tr>
-          <td>${event.event_id}</td>
-          <td>${event.point_id}</td>
-          <td>${event.event_type}</td>
-          <td><span class="badge ${event.risk_level.toLowerCase()}">${event.risk_level}</span></td>
-          <td class="status-text">${event.status}</td>
-          <td>${event.evidence_chain.length ? event.evidence_chain.map((item) => item.type).join(' + ') : '无'}</td>
+          <td>${escapeHtml(event.event_id)}</td>
+          <td>${escapeHtml(event.point_id)}</td>
+          <td>${escapeHtml(event.event_type)}</td>
+          <td><span class="badge ${escapeHtml(String(event.risk_level).toLowerCase())}">${escapeHtml(event.risk_level)}</span></td>
+          <td class="status-text">${escapeHtml(event.status)}</td>
+          <td>${event.evidence_chain.length ? event.evidence_chain.map((item) => escapeHtml(item.type)).join(' + ') : '无'}</td>
         </tr>
       `
     )
@@ -154,10 +151,10 @@ async function loadDashboard() {
     .map(
       (row) => `
         <tr>
-          <td>${row.task}</td>
-          <td>${row.model}</td>
-          <td>${row.strategy}</td>
-          <td>${row.reason}</td>
+          <td>${escapeHtml(row.task)}</td>
+          <td>${escapeHtml(row.model)}</td>
+          <td>${escapeHtml(row.strategy)}</td>
+          <td>${escapeHtml(row.reason)}</td>
         </tr>
       `
     )
@@ -198,6 +195,42 @@ function formatFileSize(bytes) {
   return `${bytes} B`;
 }
 
+const METRIC_CHARTS = {
+  CO: { color: '#5ce3d5', gradientId: 'coFieldGradient' },
+  VI: { color: '#5bb2ff', gradientId: 'viFieldGradient' },
+  WS: { color: '#7ee6a2', gradientId: 'wsFieldGradient' },
+  LA: { color: '#ffb25e', gradientId: 'laFieldGradient' }
+};
+
+function downsample(values, count) {
+  if (values.length <= count) return values;
+  const step = (values.length - 1) / (count - 1);
+  return Array.from({ length: count }, (_, index) => values[Math.round(index * step)]);
+}
+
+function seriesStats(values) {
+  if (!values.length) return { min: null, max: null, median: null };
+  const sorted = [...values].sort((left, right) => left - right);
+  return {
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    median: sorted[Math.round((sorted.length - 1) * 0.5)]
+  };
+}
+
+function preferredStation(stations) {
+  return stations.find((station) => station.startsWith('YK')) || stations[0] || '';
+}
+
+function latestByStation(records) {
+  const latest = new Map();
+  for (const record of records) {
+    const previous = latest.get(record.station);
+    if (!previous || record.timestamp >= previous.timestamp) latest.set(record.station, record);
+  }
+  return [...latest.values()].sort((left, right) => left.station.localeCompare(right.station, 'zh-CN'));
+}
+
 function renderRealMetrics(overview) {
   const metricCards = ['CO', 'VI', 'WS', 'LA'].map((code) => {
     const metric = overview.metrics[code];
@@ -230,9 +263,13 @@ function renderRealMetrics(overview) {
     .map((metric) => metric.latest_timestamp)
     .filter(Boolean)
     .sort();
-  document.getElementById('real-data-status').textContent = latestTimes.length
-    ? `实测资料截至 ${latestTimes[latestTimes.length - 1]}`
+  const latest = latestTimes.length ? latestTimes[latestTimes.length - 1] : '';
+  document.getElementById('real-data-status').textContent = latest
+    ? `实测资料截至 ${latest}`
     : '未找到可读取的实测记录';
+  document.getElementById('timestamp').textContent = latest
+    ? `资料时间：${latest}`
+    : '资料时间：暂无实测记录';
 }
 
 function renderSourceFiles(files) {
@@ -260,6 +297,55 @@ function renderFaults(data) {
       <td><span class="badge ${event.recovered ? 'l1' : 'l3'}">${event.recovered ? '已恢复' : '未恢复'}</span></td>
     </tr>
   `).join('') || '<tr><td colspan="5" class="empty-cell">暂无该隧道的设备故障记录</td></tr>';
+}
+
+function renderOverviewFaults(data) {
+  const unresolved = data.events.filter((event) => !event.recovered);
+  const rows = (unresolved.length ? unresolved : data.events).slice(0, 8);
+  document.getElementById('overview-fault-count').textContent = unresolved.length
+    ? `${unresolved.length} 条未恢复`
+    : `${data.total} 条均已恢复`;
+  document.getElementById('overview-fault-table').innerHTML = rows.map((event) => `
+    <tr>
+      <td>${escapeHtml(event.time.replace('T', ' '))}</td>
+      <td>${escapeHtml(event.device)}</td>
+      <td>${escapeHtml(event.station)}</td>
+      <td><span class="badge ${event.recovered ? 'l1' : 'l3'}">${event.recovered ? '已恢复' : '未恢复'}</span></td>
+    </tr>
+  `).join('') || '<tr><td colspan="4" class="empty-cell">暂无该隧道的设备故障记录</td></tr>';
+}
+
+async function renderOverviewCharts(overview) {
+  const board = document.getElementById('overview-charts');
+  const cards = await Promise.all(['CO', 'VI', 'WS', 'LA'].map(async (code) => {
+    const metric = overview.metrics[code];
+    const station = preferredStation(metric.stations);
+    const query = new URLSearchParams({ metric: code, limit: '180' });
+    if (station) query.set('station', station);
+    const data = await fetchJson(`/api/v1/real-data/environment?${query}`);
+    const values = data.records.map((record) => record.value);
+    const style = METRIC_CHARTS[code];
+    const chart = values.length
+      ? renderLineChart(downsample(values, 80), { color: style.color, gradientId: `overview-${style.gradientId}` })
+      : '<div class="empty-chart">该指标暂无记录</div>';
+    return `
+      <button class="overview-chart-card" type="button" data-metric="${code}">
+        <div class="overview-chart-meta">
+          <strong>${escapeHtml(metric.label)}</strong>
+          <span>${escapeHtml(station || '全部测点')} · ${data.count} 条</span>
+        </div>
+        <div class="chart-box overview-chart">${chart}</div>
+      </button>
+    `;
+  }));
+  board.innerHTML = cards.join('');
+  board.querySelectorAll('.overview-chart-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      document.getElementById('metric-select').value = card.dataset.metric;
+      document.getElementById('metric-select').dispatchEvent(new Event('change'));
+      location.hash = 'environment';
+    });
+  });
 }
 
 async function loadEnvironment(overview) {
@@ -294,6 +380,41 @@ async function loadEnvironment(overview) {
   document.getElementById('environment-latest').textContent = records.length
     ? `最近采样 ${records[records.length - 1].timestamp}`
     : '采样时间 --';
+
+  const stats = seriesStats(values);
+  document.getElementById('environment-stats').innerHTML = [
+    ['记录', data.count],
+    ['最低', formatNumber(stats.min)],
+    ['中位', formatNumber(stats.median)],
+    ['最高', formatNumber(stats.max)],
+    ['测点', metric.stations.length]
+  ].map(([label, value]) => `<div><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
+
+  const recent = records.slice(-12).reverse();
+  document.getElementById('environment-records').innerHTML = recent.map((record) => `
+    <tr>
+      <td>${escapeHtml(record.timestamp)}</td>
+      <td>${escapeHtml(record.device)}</td>
+      <td>${escapeHtml(formatNumber(record.value))}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="3" class="empty-cell">该测点暂无对应指标记录</td></tr>';
+
+  const allQuery = new URLSearchParams({ metric: metricCode, limit: '2000' });
+  const allStations = await fetchJson(`/api/v1/real-data/environment?${allQuery}`);
+  const stations = latestByStation(allStations.records);
+  const peak = Math.max(...stations.map((item) => Math.abs(item.value)), 1);
+  document.getElementById('environment-stations').innerHTML = stations.map((item) => `
+    <div class="station-bar">
+      <div class="station-bar-meta">
+        <strong>${escapeHtml(item.station)}</strong>
+        <span>${escapeHtml(formatNumber(item.value))}</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill l1" style="width:${(Math.abs(item.value) / peak) * 100}%"></div>
+      </div>
+      <small>${escapeHtml(item.timestamp)}</small>
+    </div>
+  `).join('') || '<div class="empty-chart">该指标暂无测点记录</div>';
 }
 
 function videoContentRect(video) {
@@ -394,7 +515,7 @@ async function attachDetections(video, fileName) {
 }
 
 let currentVideoName = '';
-let reviewState = { findings: [], source: '', offline: '', routingPlan: [] };
+let reviewState = { findings: [], source: '', offline: '', routingPlan: [], scope: 'sensor' };
 let routingInFlight = false;
 
 function playVideoFile(videoFile) {
@@ -451,10 +572,11 @@ async function loadRealData() {
       fetchJson('/api/v1/real-data/faults?limit=12')
     ]);
     renderRealMetrics(overview);
+    renderOverviewFaults(faults);
     renderSourceFiles(overview.files);
     renderFaults(faults);
     renderVideo(overview.files);
-    await loadEnvironment(overview);
+    await Promise.all([loadEnvironment(overview), renderOverviewCharts(overview)]);
 
     document.getElementById('metric-select').addEventListener('change', () => {
       resetMomaSession('测点范围已变化，请重新提交。');
@@ -632,12 +754,53 @@ async function runMomaAnalysis() {
   }
 }
 
+const viewAliases = {
+  overview: 'overview',
+  'real-overview': 'overview',
+  environment: 'environment',
+  'environment-panel': 'environment',
+  video: 'video',
+  'video-panel': 'video',
+  anomaly: 'anomaly',
+  'anomaly-panel': 'anomaly',
+  moma: 'moma',
+  'moma-analysis-panel': 'moma',
+  faults: 'faults',
+  'fault-panel': 'faults',
+  sources: 'sources',
+  'source-panel': 'sources',
+  demo: 'demo',
+  'demo-overview': 'demo'
+};
+
+function showView(name) {
+  const viewName = viewAliases[name] || 'overview';
+  document.querySelectorAll('.app-view').forEach((view) => {
+    view.hidden = view.dataset.view !== viewName;
+  });
+  document.querySelectorAll('.nav-item').forEach((link) => {
+    link.classList.toggle('active', link.dataset.view === viewName);
+  });
+  if (viewName === 'video') {
+    const video = document.getElementById('video-player');
+    requestAnimationFrame(() => {
+      if (typeof video._detectionDraw === 'function') video._detectionDraw();
+    });
+  }
+  window.scrollTo(0, 0);
+}
+
 document.querySelectorAll('.nav-item').forEach((link) => {
-  link.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach((item) => item.classList.remove('active'));
-    link.classList.add('active');
+  link.addEventListener('click', (event) => {
+    event.preventDefault();
+    const href = link.getAttribute('href');
+    if (location.hash === href) showView(link.dataset.view);
+    else location.hash = href.slice(1);
   });
 });
+
+window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
+showView(location.hash.slice(1) || 'overview');
 
 document.getElementById('moma-task').addEventListener('change', (event) => {
   document.getElementById('moma-strategy').value = momaTaskStrategy[event.target.value];
@@ -650,10 +813,14 @@ function renderFieldCheck(report) {
   const field = report.field_check;
   if (!field) return;
   const co = field.co || {};
+  const vi = field.vi || {};
   const light = field.light || {};
+  const wind = field.ws || {};
   document.getElementById('field-check').textContent = [
     field.conclusion,
     `一氧化碳 ${co.records ?? 0} 条，最高 ${co.max ?? '--'}。`,
+    `能见度 ${vi.records ?? 0} 条，最高 ${vi.max ?? '--'}。`,
+    `风速 ${wind.records ?? 0} 条，最高 ${wind.max ?? '--'}。`,
     `光照 ${light.records ?? 0} 条，最高 ${light.max ?? '--'}。`,
     field.temperature
   ].filter(Boolean).join(' ');
@@ -702,12 +869,13 @@ function renderRouteBoard(routes, fusion) {
   `;
 }
 
-function armReview(findings, source, offline, routingPlan) {
+function armReview(findings, source, offline, routingPlan, scope) {
   reviewState = {
     findings,
     source,
     offline: offline || reviewState.offline,
-    routingPlan: routingPlan || []
+    routingPlan: routingPlan || [],
+    scope: scope || 'sensor'
   };
   document.getElementById('anomaly-verify').disabled = findings.length === 0;
   document.getElementById('offline-review').disabled = !reviewState.offline;
@@ -744,11 +912,17 @@ async function scanSensorAnomalies() {
   try {
     const report = await fetchJson('/api/v1/anomalies');
     renderFieldCheck(report);
-    document.getElementById('finding-caption').textContent = report.findings.length ? '模拟事件' : '';
-    renderFindings(report.findings);
-    armReview(report.findings, '模拟事件', report.offline_review, report.routing_plan);
-    if (!report.findings.length) {
-      status.textContent = '现场核对完成，没有异常。未调用 MoMA。';
+    const fieldFindings = report.field_findings || [];
+    const simulated = report.findings || [];
+    document.getElementById('finding-caption').textContent = simulated.length
+      ? (fieldFindings.length ? '现场筛查在上，模拟事件在下' : '模拟事件')
+      : (fieldFindings.length ? '现场筛查' : '');
+    renderFindings([...fieldFindings, ...simulated]);
+    armReview(simulated, '模拟事件', report.offline_review, report.routing_plan, 'sensor');
+    if (!simulated.length) {
+      status.textContent = fieldFindings.length
+        ? `现场核对完成，${fieldFindings.length} 条超出筛查关注值。未调用 MoMA。`
+        : '现场核对完成，没有异常。未调用 MoMA。';
       return;
     }
     status.textContent = `现场核对完成。发现 ${report.findings.length} 条模拟异常，正在自动提交 MoMA。`;
@@ -778,13 +952,13 @@ async function scanLocalVideo() {
       status.textContent = result.detail || '视频检测暂不可用。';
       document.getElementById('finding-caption').textContent = '';
       renderFindings([]);
-      armReview([], '画面判断', result.offline_review, []);
+      armReview([], '画面判断', result.offline_review, [], 'video');
       return;
     }
     const findings = result.findings || [];
     document.getElementById('finding-caption').textContent = findings.length ? `画面判断 · ${result.video || currentVideoName}` : '';
     renderFindings(findings);
-    armReview(findings, '画面判断', result.offline_review, result.routing_plan);
+    armReview(findings, '画面判断', result.offline_review, result.routing_plan, 'video');
     if (!findings.length) {
       status.textContent = result.reply || '检测结果里没有需要上报的停驶目标。未调用 MoMA。';
       return;
@@ -817,8 +991,8 @@ async function submitReview(refresh) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          findings: reviewState.findings,
-          source: reviewState.source,
+          scope: reviewState.scope || 'sensor',
+          video: reviewState.scope === 'video' ? currentVideoName : null,
           refresh: attempt === 0 && refresh === true
         })
       });
@@ -882,7 +1056,6 @@ document.getElementById('moma-reset').addEventListener('click', () => {
 loadMomaStatus();
 
 loadDashboard().catch((error) => {
-  document.getElementById('timestamp').textContent = '方案演示样例暂不可用';
   console.error(error);
 });
 loadRealData();

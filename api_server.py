@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import sqlite3
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
@@ -16,129 +16,11 @@ from pydantic import BaseModel, Field
 
 from local_detector import OFFLINE_REVIEW, detect_sensor_anomalies
 from moma_client import MomaChatClient
-from real_data import METRICS, ROOT, TRUE_DATA_DIR, get_environment_records, get_site_faults, list_data_files
+from real_data import METRICS, TRUE_DATA_DIR, get_environment_records, get_site_faults, list_data_files
 from vision_detector import load_video_detections, scan_local_video, vision_status
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
-DB_PATH = DATA_DIR / "tunnel.db"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-app = FastAPI(title="Tunnel Monitoring API", version="1.0.0")
-
-
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_db() -> None:
-    with get_connection() as conn:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS sensor_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tunnel_id TEXT,
-                point_id TEXT,
-                timestamp TEXT,
-                temperature_c REAL,
-                humidity_pct REAL,
-                co_ppm REAL,
-                ventilation_status TEXT,
-                power_status TEXT,
-                data_quality TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS device_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tunnel_id TEXT,
-                device_id TEXT,
-                device_type TEXT,
-                timestamp TEXT,
-                status TEXT,
-                fault_code TEXT,
-                fault_desc TEXT,
-                recovery_flag INTEGER,
-                network_status TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS tunnel_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id TEXT UNIQUE,
-                tunnel_id TEXT,
-                point_id TEXT,
-                event_type TEXT,
-                risk_level TEXT,
-                confidence REAL,
-                status TEXT,
-                start_time TEXT,
-                end_time TEXT,
-                evidence_chain TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS risk_results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_id TEXT,
-                risk_level TEXT,
-                confidence REAL,
-                primary_factors TEXT,
-                actions TEXT,
-                next_check TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-        conn.commit()
-
-
-class SensorPayload(BaseModel):
-    tunnel_id: str
-    point_id: str
-    timestamp: str
-    temperature_c: float | None = None
-    humidity_pct: float | None = None
-    co_ppm: float | None = None
-    ventilation_status: str | None = None
-    power_status: str | None = None
-    data_quality: str | None = None
-
-
-class DeviceLogPayload(BaseModel):
-    tunnel_id: str
-    device_id: str
-    device_type: str | None = None
-    timestamp: str
-    status: str | None = None
-    fault_code: str | None = None
-    fault_desc: str | None = None
-    recovery_flag: bool | None = False
-    network_status: str | None = None
-
-
-class EventPayload(BaseModel):
-    event_id: str
-    tunnel_id: str
-    point_id: str
-    event_type: str
-    risk_level: str
-    confidence: float | None = None
-    status: str | None = None
-    start_time: str
-    end_time: str | None = None
-    evidence_chain: list[dict[str, Any]] | None = None
-
-
-class RiskPayload(BaseModel):
-    event_id: str
-    risk_level: str
-    confidence: float | None = None
-    primary_factors: list[dict[str, Any]] | None = None
-    actions: list[str] | None = None
-    next_check: str | None = None
 
 
 MOMA_STRATEGIES: dict[str, dict[str, Any]] = {
@@ -238,16 +120,18 @@ def _remember_moma_session(
     _MOMA_SESSIONS[session_id] = {"messages": messages, "meta": meta, "counts": counts}
 
 
-@app.on_event("startup")
-async def startup_event() -> None:
-    init_db()
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
     _load_route_cache()
-    asyncio.create_task(_warm_demo_route())
+    yield
+
+
+app = FastAPI(title="Tunnel Monitoring API", version="1.0.0", lifespan=_lifespan)
 
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "database": str(DB_PATH)}
+    return {"status": "ok"}
 
 
 @app.get("/api/v1/real-data/overview")
@@ -362,155 +246,6 @@ async def video_file(filename: str) -> FileResponse:
 @app.get("/data/true_data/{filename:path}")
 async def true_data_file(filename: str) -> FileResponse:
     return FileResponse(_safe_file(TRUE_DATA_DIR, filename), filename=Path(filename).name)
-
-
-@app.post("/api/v1/sensor/upload")
-async def upload_sensor(payload: SensorPayload) -> dict[str, Any]:
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO sensor_data (
-                tunnel_id, point_id, timestamp, temperature_c, humidity_pct,
-                co_ppm, ventilation_status, power_status, data_quality
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                payload.tunnel_id,
-                payload.point_id,
-                payload.timestamp,
-                payload.temperature_c,
-                payload.humidity_pct,
-                payload.co_ppm,
-                payload.ventilation_status,
-                payload.power_status,
-                payload.data_quality,
-            ),
-        )
-        conn.commit()
-    return {"status": "ok", "message": "sensor data uploaded", "point_id": payload.point_id}
-
-
-@app.post("/api/v1/device/log")
-async def upload_device_log(payload: DeviceLogPayload) -> dict[str, Any]:
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO device_logs (
-                tunnel_id, device_id, device_type, timestamp, status,
-                fault_code, fault_desc, recovery_flag, network_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                payload.tunnel_id,
-                payload.device_id,
-                payload.device_type,
-                payload.timestamp,
-                payload.status,
-                payload.fault_code,
-                payload.fault_desc,
-                int(payload.recovery_flag or False),
-                payload.network_status,
-            ),
-        )
-        conn.commit()
-    return {"status": "ok", "message": "device log uploaded", "device_id": payload.device_id}
-
-
-@app.post("/api/v1/event/upload")
-async def upload_event(payload: EventPayload) -> dict[str, Any]:
-    evidence = json.dumps(payload.evidence_chain, ensure_ascii=False) if payload.evidence_chain else None
-    with get_connection() as conn:
-        try:
-            conn.execute(
-                """
-                INSERT INTO tunnel_events (
-                    event_id, tunnel_id, point_id, event_type, risk_level,
-                    confidence, status, start_time, end_time, evidence_chain
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    payload.event_id,
-                    payload.tunnel_id,
-                    payload.point_id,
-                    payload.event_type,
-                    payload.risk_level,
-                    payload.confidence,
-                    payload.status,
-                    payload.start_time,
-                    payload.end_time,
-                    evidence,
-                ),
-            )
-            conn.commit()
-        except sqlite3.IntegrityError as exc:
-            raise HTTPException(status_code=409, detail=f"event already exists: {payload.event_id}") from exc
-    return {"status": "ok", "message": "event uploaded", "event_id": payload.event_id}
-
-
-@app.post("/api/v1/risk/upload")
-async def upload_risk(payload: RiskPayload) -> dict[str, Any]:
-    primary = json.dumps(payload.primary_factors, ensure_ascii=False) if payload.primary_factors else None
-    actions = json.dumps(payload.actions, ensure_ascii=False) if payload.actions else None
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO risk_results (event_id, risk_level, confidence, primary_factors, actions, next_check)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                payload.event_id,
-                payload.risk_level,
-                payload.confidence,
-                primary,
-                actions,
-                payload.next_check,
-            ),
-        )
-        conn.commit()
-    return {"status": "ok", "message": "risk result uploaded", "event_id": payload.event_id}
-
-
-@app.get("/api/v1/overview")
-async def overview() -> dict[str, Any]:
-    with get_connection() as conn:
-        sensor_count = conn.execute("SELECT COUNT(*) FROM sensor_data").fetchone()[0]
-        device_count = conn.execute("SELECT COUNT(*) FROM device_logs").fetchone()[0]
-        event_count = conn.execute("SELECT COUNT(*) FROM tunnel_events").fetchone()[0]
-        latest = conn.execute(
-            "SELECT event_id, risk_level, confidence FROM tunnel_events ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-    return {
-        "sensor_count": sensor_count,
-        "device_count": device_count,
-        "event_count": event_count,
-        "latest_event": dict(latest) if latest else None,
-    }
-
-
-@app.get("/api/v1/events")
-async def get_events(
-    point_id: str | None = Query(default=None),
-    risk_level: str | None = Query(default=None),
-) -> list[dict[str, Any]]:
-    query = "SELECT * FROM tunnel_events WHERE 1=1"
-    params: list[Any] = []
-    if point_id:
-        query += " AND point_id = ?"
-        params.append(point_id)
-    if risk_level:
-        query += " AND risk_level = ?"
-        params.append(risk_level)
-    query += " ORDER BY start_time DESC"
-
-    with get_connection() as conn:
-        rows = conn.execute(query, params).fetchall()
-
-    result = []
-    for row in rows:
-        event = dict(row)
-        event["evidence_chain"] = json.loads(event["evidence_chain"]) if event["evidence_chain"] else []
-        result.append(event)
-    return result
 
 
 def _verification_messages(findings: list[dict[str, Any]], source: str) -> list[dict[str, str]]:
@@ -680,19 +415,21 @@ async def sensor_anomalies() -> dict[str, Any]:
 
 
 class AnomalyVerifyRequest(BaseModel):
-    findings: list[dict[str, Any]] = Field(default_factory=list)
-    source: str = "本地筛查"
+    scope: Literal["sensor", "video"] = "sensor"
+    video: str | None = Field(default=None, max_length=180)
     refresh: bool = False
+
+
+async def _scoped_findings(payload: AnomalyVerifyRequest | None) -> tuple[list[dict[str, Any]], str]:
+    if payload and payload.scope == "video":
+        report = await run_in_threadpool(scan_local_video, payload.video)
+        return list(report.get("findings") or []), "画面判断"
+    return list(detect_sensor_anomalies()["findings"]), "模拟事件"
 
 
 @app.post("/api/v1/anomalies/verify")
 async def verify_sensor_anomalies(payload: AnomalyVerifyRequest | None = None) -> dict[str, Any]:
-    if payload and payload.findings:
-        findings = payload.findings
-        source = payload.source
-    else:
-        findings = detect_sensor_anomalies()["findings"]
-        source = "本地传感器历史筛查"
+    findings, source = await _scoped_findings(payload)
     if not findings:
         return {"status": "ok", "submitted": False, "reply": "本地没有需要上报的异常。", "findings": []}
     review = await _ask_moma(_verification_messages(findings, source))
@@ -736,24 +473,6 @@ def _store_route_cache(cache_key: str, result: dict[str, Any]) -> None:
     _persist_route_cache()
 
 
-async def _warm_demo_route() -> None:
-    try:
-        result = await route_sensor_anomalies(None)
-        if result.get("pending"):
-            jobs = [job for job in _ROUTE_JOBS.values() if not job.done()]
-            if jobs:
-                await asyncio.gather(*jobs)
-            result = await route_sensor_anomalies(None)
-    except Exception as exc:
-        print(f"MoMA demo route skipped: {exc}", flush=True)
-        return
-    if result.get("cached") or result.get("reply"):
-        state = "ready"
-    else:
-        state = "empty"
-    print(f"MoMA demo route {state}", flush=True)
-
-
 def _route_cache_key(findings: list[dict[str, Any]]) -> str:
     compact = []
     for finding in findings:
@@ -763,7 +482,7 @@ def _route_cache_key(findings: list[dict[str, Any]]) -> str:
 
 @app.post("/api/v1/anomalies/route")
 async def route_sensor_anomalies(payload: AnomalyVerifyRequest | None = None) -> dict[str, Any]:
-    findings = payload.findings if payload and payload.findings else detect_sensor_anomalies()["findings"]
+    findings, _source = await _scoped_findings(payload)
     plan = build_routing_plan(findings)
     if not plan:
         return {"status": "ok", "submitted": False, "routes": [], "fusion": None, "reply": "没有需要路由的异常。"}

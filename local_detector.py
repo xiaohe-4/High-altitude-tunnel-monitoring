@@ -28,13 +28,19 @@ def _simulated_findings() -> list[dict[str, Any]]:
     return findings
 
 
+# 高于本次现场一氧化碳表的最大值（约 14），低于演示注入的 86。只作筛查关注值，不是规范限值。
+CO_ATTENTION_PPM = 30.0
+_FIELD_RULES = {
+    "CO": {"high": CO_ATTENTION_PPM, "unit": "ppm", "kind": "co_high", "label": "一氧化碳浓度偏高"},
+}
+
+
 def _percentile(sorted_values: list[float], fraction: float) -> float:
     index = round(fraction * (len(sorted_values) - 1))
     return sorted_values[index]
 
 
-def _series_summary(metric: str) -> dict[str, Any]:
-    records = list(get_environment_records(metric))
+def _series_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     values = sorted(float(record["value"]) for record in records)
     if not values:
         return {"records": 0, "stations": 0, "min": None, "max": None, "median": None}
@@ -47,29 +53,72 @@ def _series_summary(metric: str) -> dict[str, Any]:
     }
 
 
+def field_exceedances(records: list[dict[str, Any]] | tuple, metric: str) -> list[dict[str, Any]]:
+    rule = _FIELD_RULES.get(metric)
+    if rule is None:
+        return []
+    findings = []
+    for record in records:
+        value = float(record["value"])
+        if value <= rule["high"]:
+            continue
+        findings.append(
+            {
+                "id": f"field-{metric}-{record['station']}-{record['timestamp']}",
+                "kind": rule["kind"],
+                "label": rule["label"],
+                "station": record["station"],
+                "timestamp": record["timestamp"],
+                "value": value,
+                "unit": rule["unit"],
+                "baseline": f"筛查关注值 {rule['high']:g} {rule['unit']}，高于本次现场表已见范围，不是规范限值",
+                "detail": "现场序列超出筛查关注值，需人工核对。本条不是模拟注入。",
+                "simulated": False,
+            }
+        )
+    return findings
+
+
 def detect_sensor_anomalies() -> dict[str, Any]:
     findings = _simulated_findings()
-    co = _series_summary("CO")
-    light = _series_summary("LA")
+    series = {metric: list(get_environment_records(metric)) for metric in ("CO", "VI", "LA", "WS")}
+    summaries = {metric: _series_summary(records) for metric, records in series.items()}
+    field_findings = field_exceedances(series["CO"], "CO")[:8]
+    if field_findings:
+        conclusion = (
+            f"现场一氧化碳有 {len(field_findings)} 条读数超过筛查关注值 {CO_ATTENTION_PPM:g} ppm，已单独列出。"
+            "能见度、风速和光照仍只做测点范围核对。模拟事件不计入这次现场核对。"
+        )
+    else:
+        conclusion = (
+            "现场一氧化碳、能见度、风速和光照都落在各测点已有记录范围内，"
+            f"一氧化碳未超过筛查关注值 {CO_ATTENTION_PPM:g} ppm，本次不作为异常。"
+        )
     return {
         "tunnel": "色尔岗曲隧道",
         "historical": True,
         "demo": bool(findings),
         "notes": [
-            "现场一氧化碳和光照已核对，不作为本次异常。",
-            "模拟事件单独列出，需手动提交后才会发给 MoMA。",
+            "现场四类环境序列已按测点核对，未超过关注值的不作为异常。",
+            "模拟事件单独列出，提交后才会发给 MoMA。",
             "现场环境表没有温度序列，温度条目完全是演示假设。",
         ],
         "field_check": {
-            "conclusion": "现场一氧化碳和光照读数都落在各测点已有记录范围内，本次不作为异常。",
-            "co": co,
-            "light": light,
+            "conclusion": conclusion,
+            "co": summaries["CO"],
+            "vi": summaries["VI"],
+            "light": summaries["LA"],
+            "ws": summaries["WS"],
             "temperature": "现场环境表没有温度序列，不判定温度。",
+            "attention_ppm": CO_ATTENTION_PPM,
         },
         "offline_review": OFFLINE_REVIEW,
         "scanned": {
-            "co_records": co["records"],
-            "light_records": light["records"],
+            "co_records": summaries["CO"]["records"],
+            "vi_records": summaries["VI"]["records"],
+            "light_records": summaries["LA"]["records"],
+            "ws_records": summaries["WS"]["records"],
         },
+        "field_findings": field_findings,
         "findings": findings,
     }
